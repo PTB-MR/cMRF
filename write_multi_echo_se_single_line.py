@@ -43,7 +43,7 @@ tr = 8  # repetition time [s]
 # define gradient/ADC timing
 readout_gradient_prewinder_duration = 1e-3
 readout_gradient_flat_time = 3.2e-3
-spoiler_gradient_duration = 3.2e-3  # s
+spoiler_gradient_duration = 3.2e-3
 
 ####################################
 ### END of configuration section ###
@@ -184,6 +184,8 @@ for te_idx, te in enumerate(echo_times):
             duration=pp.calc_duration(gx_pre),
             system=system,
         )
+
+        # add gx pre-winder and gy phase-encoding gradients
         seq.add_block(gx_pre, gy_pre, pe_label, contrast_label)
 
         # add readout gradient and ADC
