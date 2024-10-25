@@ -15,12 +15,12 @@ from utils.vds import vds
 ######################################
 
 # choose flags
-FLAG_PLOT_TRAJECTORY = True  # toggle plotting of k-space trajectory
-FLAG_PLOT_SEQ_DIAGRAM = True  # toggle plotting of sequence diagram
-FLAG_TESTREPORT = True  # toggle advanced test report including timing check (SLOW)
-FLAG_TIMINGCHECK = True  # toggle timing check (SlOW)
+FLAG_PLOT_SINGLE_TRAJ = True  # toggle plotting of the k-space trajectory of the first repetition
+FLAG_PLOT_SEQ_DIAGRAM = True  # toggle plotting of the complete sequence diagram
+FLAG_TIMINGCHECK = True  # toggle timing check of the sequence
+FLAG_TESTREPORT = True  # toggle advanced test report including timing check
 
-# Define system limits and create PyPulseq sequence object
+# define system limits and create PyPulseq sequence object
 system = pp.Opts(
     max_grad=30,
     grad_unit="mT/m",
@@ -180,8 +180,8 @@ for n, delta in enumerate(delta_array):
     max_rewinder_duration = max(max_rewinder_duration, pp.calc_duration(gx_rewinder, gy_rewinder))
 
 # gradient spoiling
-A_gz_spoil = 4 / slice_thickness - gz_dummy.area / 2
-gz_spoil = pp.make_trapezoid(channel="z", area=A_gz_spoil, system=system)
+gz_spoil_area = 4 / slice_thickness - gz_dummy.area / 2
+gz_spoil = pp.make_trapezoid(channel="z", area=gz_spoil_area, system=system)
 
 # update maximum rewinder duration including spoiling gradient
 max_rewinder_duration = max(max_rewinder_duration, pp.calc_duration(gz_spoil))
@@ -248,7 +248,6 @@ hdr = create_hdr(
 # write header to file
 prot = ismrmrd.Dataset(output_path / f"{filename}_header.h5", "w")
 prot.write_xml_header(hdr.toXML("utf-8"))
-
 
 # # # # # # # # # # # # # # # #
 # ADD ALL BLOCKS TO SEQUENCE  #
@@ -356,8 +355,7 @@ for block in range(n_blocks):
         rf_inc = divmod(rf_inc + rf_spoiling_inc, 360.0)[1]
         rf_phase = divmod(rf_phase + rf_inc, 360.0)[1]
 
-        if FLAG_PLOT_TRAJECTORY and rep_counter == 0:
-            # calculate k-space trajectory of repetition
+        if FLAG_PLOT_SINGLE_TRAJ and rep_counter == 0:
             k_traj_adc, k_traj, _, _, _ = seq.calculate_kspace()
 
         # increment repetition counter
@@ -388,7 +386,7 @@ tr_value = TR if TR is not None else min_TR
 print(f"\nSaving sequence file '{filename}.seq' in 'output' folder.")
 seq.write(str(output_path / filename), create_signature=True)
 
-if FLAG_PLOT_TRAJECTORY:
+if FLAG_PLOT_SINGLE_TRAJ:
     plt.plot(k_traj[0], k_traj[1], "--", color="blue")
     plt.plot(k_traj_adc[0], k_traj_adc[1], "o", color="red")
     plt.show()
