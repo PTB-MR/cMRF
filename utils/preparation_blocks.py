@@ -103,6 +103,7 @@ def add_t1prep(
         mu=4.9,
         duration=rf_duration,
         system=system,
+        use="inversion",
     )
 
     # create spoiler gradient

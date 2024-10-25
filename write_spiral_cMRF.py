@@ -52,7 +52,7 @@ res = fov / n_x  # spatial resolution [m]
 slice_thickness = 8e-3  # slice thickness [m]
 
 # define repetition time (TR)
-TR = 10e-3  # repetition time [s]. Set to None for minimum TR
+tr = 10e-3  # repetition time [s]. Set to None for minimum TR
 
 # define VDS readout parameters
 n_spirals_for_traj_calc = 24  # number of interleaves used for VDS trajectory calculation
@@ -93,6 +93,7 @@ rf_dummy, gz_dummy, gzr_dummy = pp.make_sinc_pulse(  # type: ignore
     time_bw_product=rf_bwt_prod,
     system=system,
     return_gz=True,
+    use="excitation",
 )
 
 # calculate variable density spiral (VDS) trajectory
@@ -191,7 +192,7 @@ min_TE = pp.calc_duration(gz_dummy) / 2 + pp.calc_duration(gzr_dummy) + adc.dela
 min_TE = np.ceil(min_TE / system.grad_raster_time) * system.grad_raster_time  # put on gradient raster
 
 # calculate minimum repetition time (TR)
-min_TR = (
+min_tr = (
     pp.calc_duration(rf_dummy, gz_dummy)  # rf pulse
     + pp.calc_duration(gzr_dummy)  # slice selection re-phasing gradient
     + pp.calc_duration(gx_readout_list[0])  # readout
@@ -200,21 +201,21 @@ min_TR = (
 )
 
 # ensure minimum TR is on gradient raster
-min_TR = np.ceil(min_TR / system.grad_raster_time) * system.grad_raster_time
+min_tr = np.ceil(min_tr / system.grad_raster_time) * system.grad_raster_time
 
 # calculate TR delay
-if TR is None:
+if tr is None:
     tr_delay = time_label
 else:
-    tr_delay = np.ceil((TR - min_TR + time_label) / system.grad_raster_time) * system.grad_raster_time
+    tr_delay = np.ceil((tr - min_tr + time_label) / system.grad_raster_time) * system.grad_raster_time
 
-assert tr_delay >= time_label, f"TR must be larger than {min_TR * 1000:.2f} ms. Current value is {TR * 1000:.2f} ms."
+assert tr_delay >= time_label, f"TR must be larger than {min_tr * 1000:.2f} ms. Current value is {tr * 1000:.2f} ms."
 
 # print TE / TR values
-final_TR = min_TR if TR is None else (min_TR - time_label) + tr_delay
+final_tr = min_tr if tr is None else (min_tr - time_label) + tr_delay
 print("\n Manual timing calculations:")
-print(f"\n shortest possible TR = {min_TR * 1000:.2f} ms")
-print(f"\n final TR = {final_TR * 1000:.2f} ms")
+print(f"\n shortest possible TR = {min_tr * 1000:.2f} ms")
+print(f"\n final TR = {final_tr * 1000:.2f} ms")
 
 # choose initial rf phase offset
 rf_phase = 0
@@ -316,6 +317,7 @@ for block in range(n_blocks):
             time_bw_product=rf_bwt_prod,
             system=system,
             return_gz=True,
+            use="excitation",
         )
 
         # set current phase_offset if rf_spoiling is activated
@@ -379,7 +381,7 @@ if FLAG_TESTREPORT:
     print(seq.test_report())
 
 # write all important parameters into the seq-file definitions
-tr_value = TR if TR is not None else min_TR
+tr_value = tr if tr is not None else min_tr
 # todo: add parameters
 
 # save seq-file
