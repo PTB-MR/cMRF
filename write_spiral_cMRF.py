@@ -43,7 +43,7 @@ n_blocks = 15  # number of heartbeat blocks
 n_unique_spirals = 48  # number of unique spiral interleaves
 
 # define ECG trigger delay
-trig_delay = 600e-3  # delay between detected trigger event and the start of the next block
+trig_delay = 400e-3  # delay between detected trigger event and the start of the next block
 
 # define geometry parameters
 fov = 300e-3  # field of view [m]
@@ -382,7 +382,13 @@ if FLAG_TESTREPORT:
 
 # write all important parameters into the seq-file definitions
 tr_value = tr if tr is not None else min_tr
-# todo: add parameters
+seq.set_definition("Name", "cMRF_spiral")
+seq.set_definition("FOV", fov)
+seq.set_definition("TE", echo_times)
+seq.set_definition("TI", inversion_time)
+seq.set_definition("TR", tr)
+seq.set_definition("slice_thickness", slice_thickness)
+seq.set_definition("sampling_scheme", "spiral")
 
 # save seq-file
 print(f"\nSaving sequence file '{filename}.seq' in 'output' folder.")
