@@ -256,11 +256,15 @@ if FLAG_TESTREPORT:
 filename = f"inv_rec_{len(inversion_times)}vals_se_{int(fov*1000)}fov_{n_x}px"
 
 # write all required parameters in the seq-file header/definitions dictionary
+seq.set_definition("Name", "t1_IR_SE")
 seq.set_definition("FOV", fov)
 seq.set_definition("TE", te)
 seq.set_definition("TR", tr)
 seq.set_definition("slice_thickness", slice_thickness)
 seq.set_definition("TI", inversion_times)
+seq.set_definition("sampling_scheme", "cartesian")
+seq.set_definition("number_of_readouts", int(n_x))
+seq.set_definition("k_space_encoding1", int(n_y))
 
 # save seq-file
 print(f"\nSaving sequence file '{filename}.seq' in 'output' folder.")

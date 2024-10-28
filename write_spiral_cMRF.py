@@ -389,6 +389,7 @@ seq.set_definition("TI", inversion_time)
 seq.set_definition("TR", tr)
 seq.set_definition("slice_thickness", slice_thickness)
 seq.set_definition("sampling_scheme", "spiral")
+seq.set_definition("number_of_readouts", int(n_x))
 
 # save seq-file
 print(f"\nSaving sequence file '{filename}.seq' in 'output' folder.")
