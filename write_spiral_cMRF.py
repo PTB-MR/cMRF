@@ -55,7 +55,12 @@ slice_thickness = 8e-3  # slice thickness [m]
 tr = 10e-3  # repetition time [s]. Set to None for minimum TR
 
 # define VDS readout parameters
-n_spirals_for_traj_calc = 24  # number of interleaves used for VDS trajectory calculation
+if fov == 128e-3 and n_x == 128:
+    n_spirals_for_traj_calc = 16
+elif fov == 300e-3 and n_x == 192:
+    n_spirals_for_traj_calc = 24
+else:
+    print("Please double check the number of spirals for trajectory calculation.")
 fov_coefficients = [fov, -3 / 4 * fov]  # FOV decreases linearly from fov_coeff[0] to fov_coeff[0]-fov_coeff[1].
 
 # define rf pulse parameters
@@ -383,7 +388,7 @@ if FLAG_TESTREPORT:
 # write all important parameters into the seq-file definitions
 tr_value = tr if tr is not None else min_tr
 seq.set_definition("Name", "cMRF_spiral")
-seq.set_definition("FOV", fov)
+seq.set_definition("FOV", [fov, fov, slice_thickness])
 seq.set_definition("TE", echo_times)
 seq.set_definition("TI", inversion_time)
 seq.set_definition("TR", tr)

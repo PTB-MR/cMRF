@@ -257,7 +257,7 @@ filename = f"inv_rec_{len(inversion_times)}vals_se_{int(fov*1000)}fov_{n_x}px"
 
 # write all required parameters in the seq-file header/definitions dictionary
 seq.set_definition("Name", "t1_IR_SE")
-seq.set_definition("FOV", fov)
+seq.set_definition("FOV", [fov, fov, slice_thickness])
 seq.set_definition("TE", te)
 seq.set_definition("TR", tr)
 seq.set_definition("slice_thickness", slice_thickness)

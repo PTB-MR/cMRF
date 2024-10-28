@@ -219,7 +219,7 @@ filename = f"multi_echo_{len(echo_times)}vals_se_{int(fov*1000)}fov_{n_x}px"
 
 # write all required parameters in the seq-file header/definitions dictionary
 seq.set_definition("Name", "t2_ME_SE")
-seq.set_definition("FOV", fov)
+seq.set_definition("FOV", [fov, fov, slice_thickness])
 seq.set_definition("TE", echo_times)
 seq.set_definition("TR", tr)
 seq.set_definition("slice_thickness", slice_thickness)
