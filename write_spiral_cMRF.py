@@ -389,9 +389,11 @@ if FLAG_TESTREPORT:
 tr_value = tr if tr is not None else min_tr
 seq.set_definition("Name", "cMRF_spiral")
 seq.set_definition("FOV", [fov, fov, slice_thickness])
-seq.set_definition("TE", echo_times)
+seq.set_definition("TE", min_TE)
 seq.set_definition("TI", inversion_time)
 seq.set_definition("TR", tr)
+seq.set_definition("t2prep_te", [0, 0, echo_times[0], echo_times[1], echo_times[2]])
+seq.set_definition("t1prep_ti", [inversion_time, 0, 0, 0, 0])
 seq.set_definition("slice_thickness", slice_thickness)
 seq.set_definition("sampling_scheme", "spiral")
 seq.set_definition("number_of_readouts", int(n_x))
@@ -402,7 +404,7 @@ seq.write(str(output_path / filename), create_signature=True)
 
 if FLAG_PLOT_SINGLE_TRAJ:
     plt.plot(k_traj[0], k_traj[1], "--", color="blue")
-    plt.plot(k_traj_adc[0], k_traj_adc[1], "o", color="red")
+    plt.plot(k_traj_adc[0], k_traj_adc[1], ".", color="red")
     plt.show()
 
 if FLAG_PLOT_SEQ_DIAGRAM:
