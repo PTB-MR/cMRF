@@ -6,9 +6,10 @@ import ismrmrd
 import matplotlib.pyplot as plt
 import numpy as np
 import pypulseq as pp
+
 from utils.create_ismrmrd_header import create_hdr
 from utils.preparation_blocks import add_t1prep, add_t2prep
-from utils.vds import vds
+from utils.vds import variable_density_spiral_trajectory
 
 ######################################
 ### BEGIN of configuration section ###
@@ -23,9 +24,9 @@ FLAG_TESTREPORT = True  # toggle advanced test report including timing check
 # define system limits and create PyPulseq sequence object
 system = pp.Opts(
     max_grad=30,
-    grad_unit="mT/m",
+    grad_unit='mT/m',
     max_slew=100,
-    slew_unit="T/m/s",
+    slew_unit='T/m/s',
     rf_ringdown_time=30e-6,
     rf_dead_time=100e-6,
     adc_dead_time=10e-6,
@@ -60,7 +61,7 @@ if fov == 128e-3 and n_x == 128:
 elif fov == 300e-3 and n_x == 192:
     n_spirals_for_traj_calc = 24
 else:
-    print("Please double check the number of spirals for trajectory calculation.")
+    print('Please double check the number of spirals for trajectory calculation.')
 fov_coefficients = [fov, -3 / 4 * fov]  # FOV decreases linearly from fov_coeff[0] to fov_coeff[0]-fov_coeff[1].
 
 # define rf pulse parameters
@@ -77,14 +78,14 @@ time_label = 1e-5  # time for setting labels [s]
 ####################################
 
 # import cMRF flip angle pattern from txt file
-flip_angle_all = np.loadtxt(Path(__file__).parent / "utils" / "flip_angle_pattern.txt")
+flip_angle_all = np.loadtxt(Path(__file__).parent / 'utils' / 'flip_angle_pattern.txt')
 
 # read maximum flip angle from flip angle pattern
 rf_phi_max = np.max(flip_angle_all)
 
 # make sure the number of blocks fits the total number of flip angles / repetitions
 if not flip_angle_all.size % n_blocks == 0:
-    raise ValueError("Number of repetitions must be a multiple of the number of blocks.")
+    raise ValueError('Number of repetitions must be a multiple of the number of blocks.')
 
 # calculate number of shots / repetitions per block
 n_shots_per_block = flip_angle_all.size // n_blocks
@@ -98,19 +99,17 @@ rf_dummy, gz_dummy, gzr_dummy = pp.make_sinc_pulse(  # type: ignore
     time_bw_product=rf_bwt_prod,
     system=system,
     return_gz=True,
-    use="excitation",
+    use='excitation',
 )
 
 # calculate variable density spiral (VDS) trajectory
-r_max = 0.5 / fov * n_x  # [1/m]
-k, g, s, timing, r, theta = vds(
-    smax=system.max_slew * 0.9,
-    gmax=system.max_grad * 0.9,
-    T=system.grad_raster_time,
-    N=n_spirals_for_traj_calc,
-    Fcoeff=fov_coefficients,
-    rmax=r_max,
-    oversampling=12,
+max_kspace_radius = 0.5 / fov * n_x
+k, g, s, timing, r, theta = variable_density_spiral_trajectory(
+    system=system,
+    sampling_period=system.grad_raster_time,
+    n_interleaves=n_spirals_for_traj_calc,
+    fov_coefficients=fov_coefficients,
+    max_kspace_radius=max_kspace_radius,
 )
 
 # calculate angular increment
@@ -120,7 +119,7 @@ delta_array = np.arange(0, 2 * np.pi, delta_unique_spirals)
 # calculate ADC
 adc_dwell = system.grad_raster_time
 adc_total_samples = np.shape(g)[0] - 1
-assert adc_total_samples <= 8192, "ADC samples exceed maximum value of 8192."
+assert adc_total_samples <= 8192, 'ADC samples exceed maximum value of 8192.'
 adc = pp.make_adc(num_samples=adc_total_samples, dwell=adc_dwell, system=system)
 
 # Pre-calculate the n_unique_spirals gradient waveforms, k-space trajectories, and rewinders
@@ -146,7 +145,7 @@ for n, delta in enumerate(delta_array):
     spiral_trajectory[n, 1, :] = np.imag(k * exp_delta_pi)
 
     gx_readout = pp.make_arbitrary_grad(
-        channel="x",
+        channel='x',
         waveform=spiral_readout_grad[n, 0],
         first=0,
         delay=adc.delay,
@@ -154,7 +153,7 @@ for n, delta in enumerate(delta_array):
     )
 
     gy_readout = pp.make_arbitrary_grad(
-        channel="y",
+        channel='y',
         waveform=spiral_readout_grad[n, 1],
         first=0,
         delay=adc.delay,
@@ -163,7 +162,7 @@ for n, delta in enumerate(delta_array):
 
     gx_rewinder, _, _ = pp.make_extended_trapezoid_area(
         area=-gx_readout.area,
-        channel="x",
+        channel='x',
         grad_start=gx_readout.last,
         grad_end=0,
         system=system,
@@ -171,7 +170,7 @@ for n, delta in enumerate(delta_array):
 
     gy_rewinder, _, _ = pp.make_extended_trapezoid_area(
         area=-gy_readout.area,
-        channel="y",
+        channel='y',
         grad_start=gy_readout.last,
         grad_end=0,
         system=system,
@@ -187,14 +186,14 @@ for n, delta in enumerate(delta_array):
 
 # gradient spoiling
 gz_spoil_area = 4 / slice_thickness - gz_dummy.area / 2
-gz_spoil = pp.make_trapezoid(channel="z", area=gz_spoil_area, system=system)
+gz_spoil = pp.make_trapezoid(channel='z', area=gz_spoil_area, system=system)
 
 # update maximum rewinder duration including spoiling gradient
 max_rewinder_duration = max(max_rewinder_duration, pp.calc_duration(gz_spoil))
 
 # calculate minimum echo time (TE) for sequence header
-min_TE = pp.calc_duration(gz_dummy) / 2 + pp.calc_duration(gzr_dummy) + adc.delay
-min_TE = np.ceil(min_TE / system.grad_raster_time) * system.grad_raster_time  # put on gradient raster
+min_te = pp.calc_duration(gz_dummy) / 2 + pp.calc_duration(gzr_dummy) + adc.delay
+min_te = np.ceil(min_te / system.grad_raster_time) * system.grad_raster_time  # put on gradient raster
 
 # calculate minimum repetition time (TR)
 min_tr = (
@@ -214,13 +213,13 @@ if tr is None:
 else:
     tr_delay = np.ceil((tr - min_tr + time_label) / system.grad_raster_time) * system.grad_raster_time
 
-assert tr_delay >= time_label, f"TR must be larger than {min_tr * 1000:.2f} ms. Current value is {tr * 1000:.2f} ms."
+assert tr_delay >= time_label, f'TR must be larger than {min_tr * 1000:.2f} ms. Current value is {tr * 1000:.2f} ms.'
 
 # print TE / TR values
 final_tr = min_tr if tr is None else (min_tr - time_label) + tr_delay
-print("\n Manual timing calculations:")
-print(f"\n shortest possible TR = {min_tr * 1000:.2f} ms")
-print(f"\n final TR = {final_tr * 1000:.2f} ms")
+print('\n Manual timing calculations:')
+print(f'\n shortest possible TR = {min_tr * 1000:.2f} ms')
+print(f'\n final TR = {final_tr * 1000:.2f} ms')
 
 # choose initial rf phase offset
 rf_phase = 0
@@ -231,19 +230,19 @@ rf_inc = 0
 # # # # # # # # # # # # #
 
 # define full filename
-filename = f"spiral_cMRF_{fov * 1000:.0f}fov_{n_x}px_{flip_angle_all.size}rep_trig{int(trig_delay * 1000)}ms"
+filename = f'spiral_cMRF_{fov * 1000:.0f}fov_{n_x}px_{flip_angle_all.size}rep_trig{int(trig_delay * 1000)}ms'
 
 # create folder for seq and header file
-output_path = Path.cwd() / "output" / filename
+output_path = Path.cwd() / 'output' / filename
 output_path.mkdir(parents=True, exist_ok=True)
 
 # delete existing header file
-if (output_path / f"{filename}_header.h5").exists():
-    (output_path / f"{filename}_header.h5").unlink()
+if (output_path / f'{filename}_header.h5').exists():
+    (output_path / f'{filename}_header.h5').unlink()
 
 # create header
 hdr = create_hdr(
-    traj_type="spiral",
+    traj_type='spiral',
     fov=fov,
     res=res,
     slice_thickness=slice_thickness,
@@ -252,15 +251,15 @@ hdr = create_hdr(
 )
 
 # write header to file
-prot = ismrmrd.Dataset(output_path / f"{filename}_header.h5", "w")
-prot.write_xml_header(hdr.toXML("utf-8"))
+prot = ismrmrd.Dataset(output_path / f'{filename}_header.h5', 'w')
+prot.write_xml_header(hdr.toXML('utf-8'))
 
 # # # # # # # # # # # # # # # #
 # ADD ALL BLOCKS TO SEQUENCE  #
 # # # # # # # # # # # # # # # #
 
 # initialize LIN label
-seq.add_block(pp.make_delay(time_label), pp.make_label(label="LIN", type="SET", value=0))
+seq.add_block(pp.make_delay(time_label), pp.make_label(label='LIN', type='SET', value=0))
 
 # initialize repetition counter
 rep_counter = 0
@@ -274,7 +273,7 @@ for block in range(n_blocks):
         current_trig_delay = trig_delay - prep_dur
 
         # add trigger
-        seq.add_block(pp.make_trigger(channel="physio1", duration=current_trig_delay))
+        seq.add_block(pp.make_trigger(channel='physio1', duration=current_trig_delay))
 
         # add all events of T1prep block
         for idx in t1prep_block.block_events:
@@ -283,7 +282,7 @@ for block in range(n_blocks):
     # add no preparation for every block following an inversion block
     elif block % 5 == 1:
         # add trigger with chosen trigger delay
-        seq.add_block(pp.make_trigger(channel="physio1", duration=trig_delay))
+        seq.add_block(pp.make_trigger(channel='physio1', duration=trig_delay))
 
     # add T2prep for every other block
     else:
@@ -295,7 +294,7 @@ for block in range(n_blocks):
         current_trig_delay = trig_delay - prep_dur
 
         # add trigger
-        seq.add_block(pp.make_trigger(channel="physio1", duration=current_trig_delay))
+        seq.add_block(pp.make_trigger(channel='physio1', duration=current_trig_delay))
 
         # add all events of T2prep block
         for idx in t2prep_block.block_events:
@@ -322,7 +321,7 @@ for block in range(n_blocks):
             time_bw_product=rf_bwt_prod,
             system=system,
             return_gz=True,
-            use="excitation",
+            use='excitation',
         )
 
         # set current phase_offset if rf_spoiling is activated
@@ -349,7 +348,7 @@ for block in range(n_blocks):
         rewinder_delay = max_rewinder_duration - current_rewinder_duration
 
         # add TR delay and LIN label
-        seq.add_block(pp.make_delay(rewinder_delay + tr_delay), pp.make_label(label="LIN", type="INC", value=1))
+        seq.add_block(pp.make_delay(rewinder_delay + tr_delay), pp.make_label(label='LIN', type='INC', value=1))
 
         # add trajectory to ISMRMRD header
         acq = ismrmrd.Acquisition()
@@ -375,36 +374,36 @@ prot.close()
 if FLAG_TIMINGCHECK and not FLAG_TESTREPORT:
     ok, error_report = seq.check_timing()
     if ok:
-        print("\nTiming check passed successfully")
+        print('\nTiming check passed successfully')
     else:
-        print("\nTiming check failed! Error listing follows\n")
+        print('\nTiming check failed! Error listing follows\n')
         print(error_report)
 
 # show advanced rest report
 if FLAG_TESTREPORT:
-    print("\nCreating advanced test report...")
+    print('\nCreating advanced test report...')
     print(seq.test_report())
 
 # write all important parameters into the seq-file definitions
 tr_value = tr if tr is not None else min_tr
-seq.set_definition("Name", "cMRF_spiral")
-seq.set_definition("FOV", [fov, fov, slice_thickness])
-seq.set_definition("TE", min_TE)
-seq.set_definition("TI", inversion_time)
-seq.set_definition("TR", tr)
-seq.set_definition("t2prep_te", [0, 0, echo_times[0], echo_times[1], echo_times[2]])
-seq.set_definition("t1prep_ti", [inversion_time, 0, 0, 0, 0])
-seq.set_definition("slice_thickness", slice_thickness)
-seq.set_definition("sampling_scheme", "spiral")
-seq.set_definition("number_of_readouts", int(n_x))
+seq.set_definition('Name', 'cMRF_spiral')
+seq.set_definition('FOV', [fov, fov, slice_thickness])
+seq.set_definition('TE', min_te)
+seq.set_definition('TI', inversion_time)
+seq.set_definition('TR', tr)
+seq.set_definition('t2prep_te', [0, 0, echo_times[0], echo_times[1], echo_times[2]])
+seq.set_definition('t1prep_ti', [inversion_time, 0, 0, 0, 0])
+seq.set_definition('slice_thickness', slice_thickness)
+seq.set_definition('sampling_scheme', 'spiral')
+seq.set_definition('number_of_readouts', int(n_x))
 
 # save seq-file
 print(f"\nSaving sequence file '{filename}.seq' in 'output' folder.")
 seq.write(str(output_path / filename), create_signature=True)
 
 if FLAG_PLOT_SINGLE_TRAJ:
-    plt.plot(k_traj[0], k_traj[1], "--", color="blue")
-    plt.plot(k_traj_adc[0], k_traj_adc[1], ".", color="red")
+    plt.plot(k_traj[0], k_traj[1], '--', color='blue')
+    plt.plot(k_traj_adc[0], k_traj_adc[1], '.', color='red')
     plt.show()
 
 if FLAG_PLOT_SEQ_DIAGRAM:
