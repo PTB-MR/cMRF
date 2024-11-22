@@ -240,18 +240,25 @@ output_path.mkdir(parents=True, exist_ok=True)
 if (output_path / f'{filename}_header.h5').exists():
     (output_path / f'{filename}_header.h5').unlink()
 
-# create header
-hdr = create_hdr(
-    traj_type='spiral',
-    fov=fov,
-    res=res,
-    slice_thickness=slice_thickness,
-    dt=adc_dwell,
-    n_k1=flip_angle_all.size,
-)
+hdr = ismrmrd.xsd.ismrmrdHeader()
+
+# set trajectory type
+encoding = ismrmrd.xsd.encodingType()
+encoding.trajectory = ismrmrd.xsd.trajectoryType('spiral')
+
+# define encoded and recon spaces
+encoded_space = ismrmrd.xsd.encodingSpaceType()
+encoded_space.matrixSize = ismrmrd.xsd.matrixSizeType(x=n_x, y=n_x, z=1)
+recon_space = ismrmrd.xsd.encodingSpaceType()
+recon_space.matrixSize = ismrmrd.xsd.matrixSizeType(x=n_x, y=n_x, z=1)
+
+# set encoded & recon spaces and add to header
+encoding.encodedSpace = encoded_space
+encoding.reconSpace = recon_space
+hdr.encoding.append(encoding)
 
 # write header to file
-prot = ismrmrd.Dataset(output_path / f'{filename}_header.h5', 'w')
+prot = ismrmrd.Dataset(f'{filename}_header.h5', 'w')
 prot.write_xml_header(hdr.toXML('utf-8'))
 
 # # # # # # # # # # # # # # # #
@@ -390,7 +397,7 @@ seq.set_definition('Name', 'cMRF_spiral')
 seq.set_definition('FOV', [fov, fov, slice_thickness])
 seq.set_definition('TE', min_te)
 seq.set_definition('TI', inversion_time)
-seq.set_definition('TR', tr)
+seq.set_definition('TR', tr_value)
 seq.set_definition('t2prep_te', [0, 0, echo_times[0], echo_times[1], echo_times[2]])
 seq.set_definition('t1prep_ti', [inversion_time, 0, 0, 0, 0])
 seq.set_definition('slice_thickness', slice_thickness)
