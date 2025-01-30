@@ -7,7 +7,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pypulseq as pp
 
-from utils.create_ismrmrd_header import create_hdr
 from utils.preparation_blocks import add_t1prep, add_t2prep
 from utils.vds import variable_density_spiral_trajectory
 
@@ -51,6 +50,7 @@ fov = 300e-3  # field of view [m]
 n_x = 192  # desired image matrix size
 res = fov / n_x  # spatial resolution [m]
 slice_thickness = 8e-3  # slice thickness [m]
+oversampling_factor = 2  # oversampling factor along spiral. Possible values: 1, 2, 4, 10
 
 # define repetition time (TR)
 tr = 10e-3  # repetition time [s]. Set to None for minimum TR
@@ -117,8 +117,8 @@ delta_unique_spirals = 2 * np.pi / n_unique_spirals
 delta_array = np.arange(0, 2 * np.pi, delta_unique_spirals)
 
 # calculate ADC
-adc_dwell = system.grad_raster_time
-adc_total_samples = np.shape(g)[0] - 1
+adc_dwell = system.grad_raster_time / oversampling_factor
+adc_total_samples = np.shape(g)[0] * oversampling_factor - int(system.adc_dead_time / adc_dwell)
 assert adc_total_samples <= 8192, 'ADC samples exceed maximum value of 8192.'
 adc = pp.make_adc(num_samples=adc_total_samples, dwell=adc_dwell, system=system)
 
@@ -359,7 +359,7 @@ for block in range(n_blocks):
 
         # add trajectory to ISMRMRD header
         acq = ismrmrd.Acquisition()
-        acq.resize(trajectory_dimensions=2, number_of_samples=adc.num_samples)
+        acq.resize(trajectory_dimensions=2, number_of_samples=int(adc_total_samples / oversampling_factor))
         traj_ismrmrd = np.stack([spiral_trajectory[idx, 0, 0:-1] * fov, spiral_trajectory[idx, 1, 0:-1] * fov]).T
         acq.traj[:] = traj_ismrmrd
         prot.append_acquisition(acq)
@@ -403,6 +403,7 @@ seq.set_definition('t1prep_ti', [inversion_time, 0, 0, 0, 0])
 seq.set_definition('slice_thickness', slice_thickness)
 seq.set_definition('sampling_scheme', 'spiral')
 seq.set_definition('number_of_readouts', int(n_x))
+seq.set_definition('ReadoutOversamplingFactor', oversampling_factor)
 
 # save seq-file
 print(f"\nSaving sequence file '{filename}.seq' in 'output' folder.")
