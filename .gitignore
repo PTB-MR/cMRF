@@ -68,3 +68,6 @@ venv.bak/
 # Ignore Conda environment directories:
 .conda
 .micromamba
+
+# Ignore output folder
+output/
