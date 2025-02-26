@@ -45,7 +45,11 @@ def _add_composite_refocusing_block(
 
     for n, (fa, phase, dur) in enumerate(zip(flip_angles, phases, durations, strict=True)):
         rf = pp.make_block_pulse(
-            flip_angle=fa * np.pi / 180, phase_offset=phase * np.pi / 180, duration=dur, system=system
+            flip_angle=fa * np.pi / 180,
+            phase_offset=phase * np.pi / 180,
+            duration=dur,
+            system=system,
+            delay=system.rf_dead_time,
         )
         seq.add_block(rf)
         if n < len(flip_angles) - 1:
@@ -93,22 +97,23 @@ def add_t1prep(
         seq = pp.Sequence()
 
     if not system:
-        system = pp.Opts(max_grad=30, grad_unit="mT/m", max_slew=100, slew_unit="T/m/s")
+        system = pp.Opts(max_grad=30, grad_unit='mT/m', max_slew=100, slew_unit='T/m/s')
 
     # create adiabatic hyperbolic secant inversion pulse
     rf = pp.make_adiabatic_pulse(
-        pulse_type="hypsec",
+        pulse_type='hypsec',
         adiabaticity=6,
         beta=800,
         mu=4.9,
         duration=rf_duration,
         system=system,
-        use="inversion",
+        use='inversion',
+        delay=system.rf_dead_time,
     )
 
     # create spoiler gradient
     gz_spoil = pp.make_trapezoid(
-        channel="z",
+        channel='z',
         amplitude=0.5 * system.max_grad,
         duration=spoil_duration,
         rise_time=spoil_ramp_time,
@@ -122,7 +127,7 @@ def add_t1prep(
 
     # check if delay is valid
     if not time_delay > 0:
-        raise ValueError("Inversion time too short for given RF and spoiler durations.")
+        raise ValueError('Inversion time too short for given RF and spoiler durations.')
 
     # create delay event
     delay = pp.make_delay(time_delay)
@@ -177,10 +182,15 @@ def add_t2prep(
         seq = pp.Sequence()
 
     if not system:
-        system = pp.Opts(max_grad=30, grad_unit="mT/m", max_slew=100, slew_unit="T/m/s")
+        system = pp.Opts(max_grad=30, grad_unit='mT/m', max_slew=100, slew_unit='T/m/s')
 
     # add 90°x excitation pulse at the beginning
-    rf_90 = pp.make_block_pulse(flip_angle=np.pi / 2, duration=duration_180 / 2, system=system)
+    rf_90 = pp.make_block_pulse(
+        flip_angle=np.pi / 2,
+        duration=duration_180 / 2,
+        system=system,
+        delay=system.rf_dead_time,
+    )
     seq.add_block(rf_90)
     total_duration = duration_180 / 2
 
@@ -189,7 +199,7 @@ def add_t2prep(
         echo_time / 8 - duration_180 / 4 - duration_180 / 2 - rf_gap_time - duration_180 / 2
     )  # TE/8 - 90°x/4 - 180°x/2 - rf_gap - 180°x/2
     if delay < 0:
-        raise ValueError("Echo time too short for T2 preparation block.")
+        raise ValueError('Echo time too short for T2 preparation block.')
     seq.add_block(pp.make_delay(delay))
     total_duration += delay
 
@@ -206,7 +216,7 @@ def add_t2prep(
     # add delay before 2nd MLEV-4 refocusing pulse
     delay = echo_time / 4 - refoc_dur
     if delay < 0:
-        raise ValueError("Echo time too short for T2 preparation block.")
+        raise ValueError('Echo time too short for T2 preparation block.')
     seq.add_block(pp.make_delay(delay))
     total_duration += delay
 
@@ -253,13 +263,17 @@ def add_t2prep(
     # add delay before first tip-up pulse
     delay = echo_time / 8 - refoc_dur / 2 - duration_180 / 2 * 3 / 2  # TE/8 - refoc_dur/2 - 270°x/2
     if delay < 0:
-        raise ValueError("Echo time too short for T2 preparation block.")
+        raise ValueError('Echo time too short for T2 preparation block.')
     seq.add_block(pp.make_delay(delay))
     total_duration += delay
 
     # add composite tip-up pulse (270°x + [-360]°x)
-    rf_tip_up_270 = pp.make_block_pulse(flip_angle=3 * np.pi / 2, duration=duration_180 / 2 * 3, system=system)
-    rf_tip_up_360 = pp.make_block_pulse(flip_angle=-2 * np.pi, duration=duration_180 * 2, system=system)
+    rf_tip_up_270 = pp.make_block_pulse(
+        flip_angle=3 * np.pi / 2, duration=duration_180 / 2 * 3, system=system, delay=system.rf_dead_time
+    )
+    rf_tip_up_360 = pp.make_block_pulse(
+        flip_angle=-2 * np.pi, duration=duration_180 * 2, system=system, delay=system.rf_dead_time
+    )
     seq.add_block(rf_tip_up_270)
     seq.add_block(pp.make_delay(rf_gap_time))
     seq.add_block(rf_tip_up_360)
@@ -267,7 +281,7 @@ def add_t2prep(
 
     # add spoiler gradient
     gz_spoil = pp.make_trapezoid(
-        channel="z",
+        channel='z',
         amplitude=0.5 * system.max_grad,
         flat_time=spoil_flat_time,
         rise_time=spoil_ramp_time,

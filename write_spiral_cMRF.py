@@ -7,9 +7,15 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pypulseq as pp
 
-from utils.create_ismrmrd_header import create_hdr
-from utils.preparation_blocks import add_t1prep, add_t2prep
+from utils.preparation_blocks import add_t1prep
+from utils.preparation_blocks import add_t2prep
 from utils.vds import variable_density_spiral_trajectory
+
+
+def round_up_to_even(n: int) -> int:
+    """Round up to the next even number."""
+    return n + (n % 2)
+
 
 ######################################
 ### BEGIN of configuration section ###
@@ -53,7 +59,7 @@ res = fov / n_x  # spatial resolution [m]
 slice_thickness = 8e-3  # slice thickness [m]
 
 # define repetition time (TR)
-tr = 10e-3  # repetition time [s]. Set to None for minimum TR
+tr = None  # repetition time [s]. Set to None for minimum TR
 
 # define VDS readout parameters
 if fov == 128e-3 and n_x == 128:
@@ -100,6 +106,7 @@ rf_dummy, gz_dummy, gzr_dummy = pp.make_sinc_pulse(  # type: ignore
     system=system,
     return_gz=True,
     use='excitation',
+    delay=system.rf_dead_time,
 )
 
 # calculate variable density spiral (VDS) trajectory
@@ -118,9 +125,10 @@ delta_array = np.arange(0, 2 * np.pi, delta_unique_spirals)
 
 # calculate ADC
 adc_dwell = system.grad_raster_time
-adc_total_samples = np.shape(g)[0] - 1
+adc_total_samples = np.shape(g)[0] - 2
+assert adc_total_samples % 2 == 0, 'ADC samples must be even.'
 assert adc_total_samples <= 8192, 'ADC samples exceed maximum value of 8192.'
-adc = pp.make_adc(num_samples=adc_total_samples, dwell=adc_dwell, system=system)
+adc = pp.make_adc(num_samples=adc_total_samples, dwell=adc_dwell, system=system, delay=system.adc_dead_time)
 
 # Pre-calculate the n_unique_spirals gradient waveforms, k-space trajectories, and rewinders
 n_points_g = np.shape(g)[0]
@@ -258,7 +266,7 @@ encoding.reconSpace = recon_space
 hdr.encoding.append(encoding)
 
 # write header to file
-prot = ismrmrd.Dataset(f'{filename}_header.h5', 'w')
+prot = ismrmrd.Dataset(output_path / f'{filename}_header.h5')
 prot.write_xml_header(hdr.toXML('utf-8'))
 
 # # # # # # # # # # # # # # # #
@@ -309,6 +317,9 @@ for block in range(n_blocks):
 
     # loop over shots / repetitions per block
     for _ in range(n_shots_per_block):
+        # save start time of current TR block
+        _start_time_tr_block = sum(seq.block_durations.values())
+
         # get current flip angle
         fa = flip_angle_all[rep_counter]
 
@@ -329,6 +340,7 @@ for block in range(n_blocks):
             system=system,
             return_gz=True,
             use='excitation',
+            delay=system.rf_dead_time,
         )
 
         # set current phase_offset if rf_spoiling is activated
@@ -336,8 +348,11 @@ for block in range(n_blocks):
             rf_n.phase_offset = rf_phase / 180 * np.pi
             adc.phase_offset = rf_phase / 180 * np.pi
 
+        # create repetition label
+        repetition_label = pp.make_label(label='LIN', type='SET', value=rep_counter)
+
         # add slice selective excitation pulse
-        seq.add_block(rf_n, gz_n)
+        seq.add_block(rf_n, gz_n, repetition_label)
 
         # add slice selection re-phasing gradient
         seq.add_block(gzr_n)
@@ -350,17 +365,17 @@ for block in range(n_blocks):
         gy_rewinder = gy_rewinder_list[idx]
         seq.add_block(gx_rewinder, gy_rewinder, gz_spoil)
 
-        # calculate rewinder delay for current shot
-        current_rewinder_duration = max(pp.calc_duration(gx_rewinder), pp.calc_duration(gy_rewinder))
-        rewinder_delay = max_rewinder_duration - current_rewinder_duration
+        # calculate TR delay
+        duration_tr_block = sum(seq.block_durations.values()) - _start_time_tr_block
+        tr_delay = np.round((tr - duration_tr_block) / system.block_duration_raster) * system.block_duration_raster
 
-        # add TR delay and LIN label
-        seq.add_block(pp.make_delay(rewinder_delay + tr_delay), pp.make_label(label='LIN', type='INC', value=1))
+        # add TR delay
+        seq.add_block(pp.make_delay(tr_delay))
 
         # add trajectory to ISMRMRD header
         acq = ismrmrd.Acquisition()
         acq.resize(trajectory_dimensions=2, number_of_samples=adc.num_samples)
-        traj_ismrmrd = np.stack([spiral_trajectory[idx, 0, 0:-1] * fov, spiral_trajectory[idx, 1, 0:-1] * fov]).T
+        traj_ismrmrd = np.stack([spiral_trajectory[idx, 0, 0:-2] * fov, spiral_trajectory[idx, 1, 0:-2] * fov]).T
         acq.traj[:] = traj_ismrmrd
         prot.append_acquisition(acq)
 
@@ -403,6 +418,8 @@ seq.set_definition('t1prep_ti', [inversion_time, 0, 0, 0, 0])
 seq.set_definition('slice_thickness', slice_thickness)
 seq.set_definition('sampling_scheme', 'spiral')
 seq.set_definition('number_of_readouts', int(n_x))
+seq.set_definition('PhaseResolution', round_up_to_even(n_x) / round_up_to_even(flip_angle_all.size))
+seq.set_definition('ReadoutOversamplingFactor', round_up_to_even(adc_total_samples) / round_up_to_even(n_x))
 
 # save seq-file
 print(f"\nSaving sequence file '{filename}.seq' in 'output' folder.")
